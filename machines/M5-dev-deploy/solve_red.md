@@ -29,6 +29,7 @@ DEPLOY_TOKEN="$(jq -r '(if type == "array" then .[] else (.settings // .values /
 curl --max-time 8 -fsS http://203.0.3.36:8888/api/applications \
      -H "Authorization: Bearer ${DEPLOY_TOKEN}" | jq .
 ```
+<img width="1288" height="636" alt="WindowsTerminal_EQqYv6AdM0" src="https://github.com/user-attachments/assets/6c61c6bb-5934-4bac-8c68-a87a28dd7553" />
 
 The response includes `pul-ota-firmware`.
 
@@ -41,6 +42,7 @@ curl --max-time 8 -fsS -X POST \
      -o "$RANGE3_DIR/dryrun.json"
 jq '{result, warning, manifest_present: (.manifest != null)}' "$RANGE3_DIR/dryrun.json"
 ```
+<img width="1307" height="220" alt="WindowsTerminal_n8FMa62C5h" src="https://github.com/user-attachments/assets/c14f2f6e-e498-418c-a92e-1505c37781e7" />
 
 The API returned a dry-run manifest. No sync was applied to a cluster.
 
@@ -49,6 +51,7 @@ The API returned a dry-run manifest. No sync was applied to a cluster.
 ```bash
 jq -r '.manifest' "$RANGE3_DIR/dryrun.json" | grep -E 'kind: Secret|cluster_endpoint:|namespace:' | sed -E 's/(token:).*/\1 <redacted>/'
 ```
+<img width="1260" height="207" alt="WindowsTerminal_5lvI1o86M5" src="https://github.com/user-attachments/assets/31f24937-bf30-47b7-a11c-2a476acc7111" />
 
 The manifest contains a ServiceAccount Secret and reports `https://193.x.x.x:6443`. That address is a placeholder, not a validated cluster endpoint.
 
