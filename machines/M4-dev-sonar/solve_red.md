@@ -23,7 +23,7 @@ curl --max-time 8 -fsS http://203.0.3.36:9200/api/authentication/validate \
 ### Step 2 — List Projects
 ```bash
 curl --max-time 8 -fsS http://203.0.3.36:9200/api/projects/search \
-     -H "Authorization: Bearer $(sed -n 's/^SONAR_TOKEN=//p' "$RANGE3_DIR/sonarqube-access.env")" | python3 -m json.tool
+     -H "Authorization: Bearer $(sed -n 's/^SONAR_TOKEN=//p' "$RANGE3_DIR/sonarqube-access.env")" | jq .
 ```
 Note project key: `pul-firmware-ota`
 
@@ -36,8 +36,8 @@ umask 077
 curl --max-time 8 -fsS "http://203.0.3.36:9200/api/settings/values?component=pul-firmware-ota" \
      -H "Authorization: Bearer $(sed -n 's/^SONAR_TOKEN=//p' "$RANGE3_DIR/sonarqube-access.env")" \
      -o "$RANGE3_DIR/sonar-settings.json"
-python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); rows=d if isinstance(d,list) else d.get("settings",d.get("values",[])); print("setting keys:", ", ".join(r.get("key","?") for r in rows))' "$RANGE3_DIR/sonar-settings.json"
-export DEPLOY_TOKEN="$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); rows=d if isinstance(d,list) else d.get("settings",d.get("values",[])); print(next(r["value"] for r in rows if r.get("key")=="sonar.ci.deploy_token"))' "$RANGE3_DIR/sonar-settings.json")"
+printf 'Setting keys: %s\n' "$(jq -r '[(if type == "array" then .[] else (.settings // .values // [])[] end) | .key] | join(", ")' "$RANGE3_DIR/sonar-settings.json")"
+export DEPLOY_TOKEN="$(jq -r '(if type == "array" then .[] else (.settings // .values // [])[] end) | select(.key == "sonar.ci.deploy_token") | .value' "$RANGE3_DIR/sonar-settings.json")"
 printf 'Deploy Commander token loaded into this shell; value not printed.\n'
 ```
 

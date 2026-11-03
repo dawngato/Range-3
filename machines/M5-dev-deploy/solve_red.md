@@ -14,9 +14,9 @@ Load the Deploy Commander API token saved by M4 from `$RANGE3_DIR/sonar-settings
 
 ### Step 1 — Verify Token & List Applications
 ```bash
-DEPLOY_TOKEN="$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); rows=d if isinstance(d,list) else d.get("settings",d.get("values",[])); print(next(r["value"] for r in rows if r.get("key")=="sonar.ci.deploy_token"))' "$RANGE3_DIR/sonar-settings.json")"
+DEPLOY_TOKEN="$(jq -r '(if type == "array" then .[] else (.settings // .values // [])[] end) | select(.key == "sonar.ci.deploy_token") | .value' "$RANGE3_DIR/sonar-settings.json")"
 curl --max-time 8 -fsS http://203.0.3.36:8888/api/applications \
-     -H "Authorization: Bearer ${DEPLOY_TOKEN}" | python3 -m json.tool
+     -H "Authorization: Bearer ${DEPLOY_TOKEN}" | jq .
 ```
 Identifies `pul-ota-firmware`. The displayed cluster address `193.x.x.x:6443` is a placeholder and was not validated.
 
@@ -26,7 +26,7 @@ Identifies `pul-ota-firmware`. The displayed cluster address `193.x.x.x:6443` is
 ```bash
 curl --max-time 8 -fsS -X POST \
      "http://203.0.3.36:8888/api/applications/pul-ota-firmware/sync?dryRun=true" \
-     -H "Authorization: Bearer ${DEPLOY_TOKEN}" | python3 -m json.tool
+     -H "Authorization: Bearer ${DEPLOY_TOKEN}" | jq .
 ```
 
 Run Step 2 in the same terminal as Step 1 so `DEPLOY_TOKEN` remains set. The response contains the exercise manifest and a placeholder cluster target.

@@ -42,7 +42,7 @@ curl --max-time 8 -fsS http://203.0.3.36:5000/v2/pul/firmware-builder/tags/list
 
 ### Step 4 — Get Manifest (extract config digest)
 ```bash
-curl --max-time 8 -fsS http://203.0.3.36:5000/v2/pul/firmware-builder/manifests/latest | python3 -m json.tool
+curl --max-time 8 -fsS http://203.0.3.36:5000/v2/pul/firmware-builder/manifests/latest | jq .
 ```
 Note the config digest: `sha256:a4f3c2b1e8d7...`
 
@@ -53,9 +53,9 @@ Note the config digest: `sha256:a4f3c2b1e8d7...`
 ```bash
 DIGEST="sha256:a4f3c2b1e8d7a6f5e4d3c2b1a0f9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b3a2f1"
 curl --max-time 8 -fsS "http://203.0.3.36:5000/v2/pul/firmware-builder/blobs/${DIGEST}" -o "$RANGE3_DIR/registry-config.json"
-python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print("ENV keys:", ", ".join(x.split("=",1)[0] for x in d["config"]["Env"]))' "$RANGE3_DIR/registry-config.json"
-export MINIO_ACCESS_KEY="$(python3 -c 'import json,sys; print(next(x.split("=",1)[1] for x in json.load(open(sys.argv[1]))["config"]["Env"] if x.startswith("MINIO_ACCESS_KEY=")))' "$RANGE3_DIR/registry-config.json")"
-export MINIO_SECRET_KEY="$(python3 -c 'import json,sys; print(next(x.split("=",1)[1] for x in json.load(open(sys.argv[1]))["config"]["Env"] if x.startswith("MINIO_SECRET_KEY=")))' "$RANGE3_DIR/registry-config.json")"
+printf 'ENV keys: %s\n' "$(jq -r '[.config.Env[] | split("=")[0]] | join(", ")' "$RANGE3_DIR/registry-config.json")"
+export MINIO_ACCESS_KEY="$(jq -r '.config.Env[] | select(startswith("MINIO_ACCESS_KEY=")) | sub("^[^=]*=";"")' "$RANGE3_DIR/registry-config.json")"
+export MINIO_SECRET_KEY="$(jq -r '.config.Env[] | select(startswith("MINIO_SECRET_KEY=")) | sub("^[^=]*=";"")' "$RANGE3_DIR/registry-config.json")"
 printf 'MinIO credentials loaded into this shell; values not printed.\n'
 ```
 
