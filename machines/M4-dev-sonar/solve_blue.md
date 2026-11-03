@@ -1,21 +1,32 @@
 # solve_blue.md — M4 · dev-sonar
 ## Blue Team Detection & Response
-**Vulnerability:** Plaintext token in project settings API
+**Vulnerability:** Plaintext token exposed through the project settings API
 
 ---
+
 ## Detection
+
+Run on the SonarQube host:
+
 ```bash
-# Check for settings API queries
-grep "SETTINGS_QUERY" /var/log/pul-sonar/sonar.log
-# Shows: component=pul-firmware-ota from external IP
+grep --color=never 'SETTINGS_QUERY' /var/log/pul-sonar/sonar.log | grep -v '127.0.0.1'
 ```
-<img width="1765" height="134" alt="image" src="https://github.com/user-attachments/assets/bee06e98-f462-4b4d-8792-92452026bbe5" />
 
+To show the observed Kali client's queries only:
 
-### Snort Rule
+```bash
+grep --color=never 'SETTINGS_QUERY' /var/log/pul-sonar/sonar.log | grep '10.200.0.8'
 ```
-alert http any any -> 11.x.x.x 9200 (
-  msg:"GRIDFALL:SonarQube settings API with external token";
+
+Both searches were verified against this host and returned settings queries for `pul-firmware-ota` from `10.200.0.8`.
+
+### Snort rule example
+
+This is an IDS rule, not a shell command. It assumes the sensor has `$HOME_NET` and HTTP inspection configured:
+
+```text
+alert http any any -> $HOME_NET 9200 (
+  msg:"GRIDFALL:SonarQube project settings query";
   content:"GET"; http_method; content:"/api/settings/values"; http_uri;
   content:"pul-firmware-ota"; http_uri;
   sid:3000401; rev:1;
@@ -23,18 +34,34 @@ alert http any any -> 11.x.x.x 9200 (
 ```
 
 ## Containment
-1. Revoke `sqa_pul_admin_2024_gridfall` token immediately
-2. Revoke `dc-pul-deploy-2024-gridfall` Deploy Commander token
-3. Block external access to port 9200
 
-## Eradication
-1. **Remove** `sonar.ci.deploy_token` from project settings — store in Vault instead
-2. **Regenerate** all project tokens and deploy tokens
-3. **Implement** secret scanning on SonarQube project configurations
+On the SonarQube host, block the observed source from port 9200. Replace the source IP if the log shows a different client:
+
+```bash
+sudo iptables -I INPUT 1 -s 10.200.0.8 -p tcp -m tcp --dport 9200 -j DROP
+sudo iptables -C INPUT -s 10.200.0.8 -p tcp -m tcp --dport 9200 -j DROP
+```
+
+To remove that rule and restore access:
+
+```bash
+sudo iptables -D INPUT -s 10.200.0.8 -p tcp -m tcp --dport 9200 -j DROP
+```
+
+Revoke the exposed SonarQube token and the Deploy Commander token through their configured administrative interfaces. Their secret values are intentionally redacted in this public writeup.
+
+## Eradication and remediation
+
+1. Remove `sonar.ci.deploy_token` from project settings and inject it at runtime from the configured secrets manager.
+2. Rotate the SonarQube and Deploy Commander tokens that may have been exposed.
+3. Add secret scanning for project settings and API responses.
+4. Review SonarQube access logs for other settings API requests.
 
 ## IOC Summary
+
 | Type | Value |
 |---|---|
-| Exposed Token | dc-pul-deploy-2024-gridfall (Deploy Commander API token) |
-| Root Cause | CI/CD token stored as plaintext project setting |
-| Next at Risk | M5 dev-deploy (11.x.x.x:8888) |
+| Exposed token | Deploy Commander API token in project settings; value redacted |
+| Observed source | `10.200.0.8` |
+| Root cause | CI/CD token stored as a plaintext project setting |
+| Next at risk | M5 dev-deploy, port 8888 |

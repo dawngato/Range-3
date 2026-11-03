@@ -1,49 +1,74 @@
 # solve_blue.md — M2 · dev-registry
 ## Blue Team Detection & Response
-**Vulnerability:** Unauthenticated Docker Registry v2 API + Credentials in Image ENV
+**Vulnerability:** Unauthenticated Docker Registry v2 API and credentials embedded in an image
 
 ---
+
 ## Detection
 
-### Registry Access Log
+Run on the registry host:
+
 ```bash
-grep --color=never -E 'v2/_catalog|manifests|blobs' /var/log/pul-registry/registry.log | \
-    grep -v '127.0.0.1'
+grep --color=never -E 'v2/_catalog|manifests|blobs' /var/log/pul-registry/registry.log | grep -v '127.0.0.1'
 ```
-The log stores the actual client IP, not the literal placeholder `from=<external>`. The filter above excludes loopback requests and shows remote catalogue, manifest, and blob requests.
 
-<img width="2035" height="597" alt="image" src="https://github.com/user-attachments/assets/09b330d9-e64d-4efc-aaa6-56e6e09a58ce" />
+This host logs client IPs in the registry log. The observed Kali source was `10.200.0.8`; to show its requests only:
 
-
-
-### Snort/Suricata Rule
+```bash
+grep --color=never -E 'v2/_catalog|manifests|blobs' /var/log/pul-registry/registry.log | grep '10.200.0.8'
 ```
-alert http any any -> 11.x.x.x 5000 (
-  msg:"GRIDFALL:Docker registry unauthenticated catalog enum";
+
+The query was verified against this host and returned catalogue, manifest, and blob requests from that source.
+
+### Snort rule example
+
+This is an IDS rule, not a shell command. It assumes the sensor has `$HOME_NET` and HTTP inspection configured:
+
+```text
+alert http any any -> $HOME_NET 5000 (
+  msg:"GRIDFALL:Docker registry catalog enumeration";
   content:"GET"; http_method; content:"/v2/_catalog"; http_uri;
   content:!"Authorization"; http_header;
   sid:3000201; rev:1;
 )
 ```
 
----
 ## Containment
+
+On the registry host, block the observed source from port 5000. Replace the source IP if the log shows a different client:
+
 ```bash
-# Add htpasswd auth to registry
-apt-get install -y apache2-utils
-htpasswd -Bc /opt/pul-registry/htpasswd pul-registry-svc
-# Update registry config to require auth
+sudo iptables -I INPUT 1 -s 10.200.0.8 -p tcp -m tcp --dport 5000 -j DROP
+sudo iptables -C INPUT -s 10.200.0.8 -p tcp -m tcp --dport 5000 -j DROP
 ```
 
-## Eradication
-1. **Rotate MinIO credentials** — MINIO_ACCESS_KEY/SECRET_KEY compromised
-2. **Rebuild image** — Never bake credentials into image ENV; use Vault runtime injection
-3. **Enable registry auth** — htpasswd or token-based auth required
-4. **Audit all images** — Scan all registry images for embedded credentials
+To remove that rule and restore access:
+
+```bash
+sudo iptables -D INPUT -s 10.200.0.8 -p tcp -m tcp --dport 5000 -j DROP
+```
+
+The original `htpasswd` commands are not valid remediation for this host as written. The registry runs as the custom `pul-registry.service` Python app; `htpasswd` and `/opt/pul-registry/htpasswd` are absent, and creating a password file alone would not enable authentication. Inspect the running service before implementing an authentication change:
+
+```bash
+systemctl status pul-registry.service --no-pager
+systemctl show --value -p ExecStart pul-registry.service
+```
+
+## Eradication and remediation
+
+1. Rotate the MinIO credentials found in the exposed image; treat both values as compromised.
+2. Rebuild and republish the image without credentials in its environment or layers.
+3. Implement and verify authentication in the registry application or its configured reverse proxy before reopening external access.
+4. Scan all registry images for embedded credentials.
+
+The service configuration does not identify a supported authentication mechanism, so the former `apt-get`/`htpasswd` block has been removed instead of presenting an ineffective command as a fix.
 
 ## IOC Summary
+
 | Type | Value |
 |---|---|
-| Exposed Credential | MINIO_ACCESS_KEY=pul-build-svc / MINIO_SECRET_KEY=Artf@ct5tr!PUL24 |
-| Root Cause | Credentials baked into Docker image ENV layer (failed Vault migration) |
-| Next at Risk | M3 dev-artifacts (11.x.x.x:9000) |
+| Exposed credential | MinIO access key and secret in the image; values redacted |
+| Observed source | `10.200.0.8` |
+| Root cause | Credentials baked into a Docker image environment layer |
+| Next at risk | M3 dev-artifacts, port 9000 |
