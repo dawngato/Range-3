@@ -28,6 +28,7 @@ Use the token retrieved from M3 to query the `pul-firmware-ota` project settings
 curl --max-time 8 -fsS http://203.0.3.36:9200/api/authentication/validate \
      -H "X-Sonar-Token: $(sed -n 's/^SONAR_TOKEN=//p' "$RANGE3_DIR/sonarqube-access.env")" | jq .
 ```
+<img width="1387" height="187" alt="WindowsTerminal_7HytDMEAfe" src="https://github.com/user-attachments/assets/c2839afc-a3b5-48c6-b1c1-1ad384e4924a" />
 
 The API returned `valid: true` for the token retrieved from M3.
 
@@ -37,6 +38,7 @@ The API returned `valid: true` for the token retrieved from M3.
 curl --max-time 8 -fsS http://203.0.3.36:9200/api/projects/search \
      -H "Authorization: Bearer $(sed -n 's/^SONAR_TOKEN=//p' "$RANGE3_DIR/sonarqube-access.env")" | jq .
 ```
+<img width="1268" height="697" alt="WindowsTerminal_BYtpXpZsxQ" src="https://github.com/user-attachments/assets/e780b2a0-5066-487a-802b-c8bab55432f5" />
 
 The response includes the `pul-firmware-ota` project.
 
@@ -51,6 +53,7 @@ printf 'Setting keys: %s\n' "$(jq -r '[(if type == "array" then .[] else (.setti
 export DEPLOY_TOKEN="$(jq -r '(if type == "array" then .[] else (.settings // .values // [])[] end) | select(.key == "sonar.ci.deploy_token") | .value' "$RANGE3_DIR/sonar-settings.json")"
 printf 'Deploy Commander token loaded; value not printed.\n'
 ```
+<img width="1450" height="259" alt="WindowsTerminal_U5sPbQXY7i" src="https://github.com/user-attachments/assets/8192070c-6ce7-44e1-90a2-70a92722a5ec" />
 
 The settings include `sonar.ci.deploy_token` and `sonar.ci.deploy_url`. The token is loaded into `DEPLOY_TOKEN`; its value is redacted here. The URL stored in the setting contains the placeholder `11.x.x.x`; the deployed M5 service is at `203.0.3.36:8888`.
 
