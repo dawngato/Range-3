@@ -99,13 +99,15 @@ Inspect the current security settings:
 sudo grep -E '<useSecurity>|<securityRealm|<authorizationStrategy' /var/lib/jenkins/config.xml
 ```
 
+On this host, `useSecurity` is `true`, but the configured realm is `SecurityRealm$None` and the authorization strategy is `AuthorizationStrategy$Unsecured`. Jenkins still returns anonymous API requests successfully, so the `useSecurity` flag alone does not mean access is protected.
+
 Enable authentication through the Jenkins administration process only after a working administrator account and recovery path are confirmed. The writeup does not specify working administrator credentials or an approved realm, so no direct configuration-changing command is provided.
 
 ---
 
 ## Eradication
 
-The registry host `11.x.x.x:5000` in the artifact is a scenario placeholder. Confirm the real registry endpoint and rotate the exposed `pul-registry-svc` credential there. The Vault example is not directly runnable until Vault is configured and a new credential has been issued; do not paste a placeholder password into a command.
+The artifact's registry host `11.x.x.x:5000` is a scenario placeholder; the deployed registry is reachable at `203.0.3.36:5000`. Rotate the exposed `pul-registry-svc` credential through the registry's configured control plane. The Vault example is not directly runnable until Vault is configured and a new credential has been issued; do not paste a placeholder password into a command.
 
 After saving required incident evidence and rotating the credential, remove the exposed build archive if eradication is intended. This command deletes the archived artifact:
 
