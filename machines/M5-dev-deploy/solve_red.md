@@ -102,6 +102,20 @@ Expected status: `403`. The API certificate is verified against the CA from the 
 
 The cluster is a single-node K3s lab instance. The dry-run remains non-mutating; no firmware Deployment is applied by these commands.
 
+### Live flag check
+
+The live check on 2026-11-03 reached the Kubernetes API at https://203.0.2.188:6443 with certificate verification enabled. In pul-production, the ServiceAccount can currently see only the pul-ota-deployer-token Secret and the cluster configuration ConfigMap. There are no Pods, Deployments, or Services in the namespace, and no flag Secret or ConfigMap is provisioned. The ServiceAccount Secret contains only its token, CA certificate, and namespace fields; their values are not printed here.
+
+List Secret names and data key names without exposing values:
+
+    curl --max-time 8 -fsS --cacert <(printf '%s' "$CLUSTER_CA_B64" | base64 -d) -H "Authorization: Bearer $SA_TOKEN" "$CLUSTER_ENDPOINT/api/v1/namespaces/pul-production/secrets" | jq -r '.items[] | [.metadata.name, ((.data // {}) | keys | join(","))] | @tsv'
+
+Check for running Pods:
+
+    curl --max-time 8 -fsS --cacert <(printf '%s' "$CLUSTER_CA_B64" | base64 -d) -H "Authorization: Bearer $SA_TOKEN" "$CLUSTER_ENDPOINT/api/v1/namespaces/pul-production/pods" | jq -r '.items[].metadata.name'
+
+No flag was retrieved because the current namespace has no flag-bearing resource or application workload. A challenge workload and its flag must be provisioned in the lab before this pivot can produce a flag. Do not report the ServiceAccount token or dry-run response as the flag.
+
 ## MITRE ATT&CK Mapping
 
 | Tactic | Technique | ID |
