@@ -38,7 +38,8 @@ The response is HTTP 200 and includes the Docker Registry v2 header.
 ```bash
 curl --max-time 8 -fsS http://203.0.3.36:5000/v2/_catalog | jq .
 ```
-<img width="866" height="253" alt="WindowsTerminal_6ZahuueyeN" src="https://github.com/user-attachments/assets/2e753167-4153-490d-835b-2916ded4a5c5" />
+<img width="1152" height="227" alt="WindowsTerminal_AE3BY0Aaco" src="https://github.com/user-attachments/assets/7be30bb2-87c8-4382-bebe-5c5cb4341987" />
+
 
 The catalog lists `pul/firmware-builder` and `pul/sonar-runner`.
 
