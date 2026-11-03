@@ -61,13 +61,29 @@ The artifact contains the registry username, password field, and base64 `auth` f
 
 ### Step 5 — Check the credential fields
 
+Run each command separately in the same terminal:
+
 ```bash
 REGISTRY_USER="$(jq -r '.auths[] | .username' "$RANGE3_DIR/docker-config.json")"
+```
+
+```bash
 REGISTRY_PASSWORD_CANDIDATE="$(jq -r '.auths[] | .password' "$RANGE3_DIR/docker-config.json")"
-AUTH_VALUE="$(jq -r '.auths[] | .auth' "$RANGE3_DIR/docker-config.json" | base64 -d)"
-if test "$AUTH_VALUE" = "$REGISTRY_USER:$REGISTRY_PASSWORD_CANDIDATE"; then echo 'auth field matches password field'; else echo 'auth field does not match password field'; fi
-unset AUTH_VALUE
-export REGISTRY_USER REGISTRY_PASSWORD_CANDIDATE
+```
+
+```bash
+jq -r '(.auths | to_entries[0]) as $entry | if ($entry.value.auth | @base64d) == "\($entry.value.username):\($entry.value.password)" then "auth field matches password field" else "auth field does not match password field" end' "$RANGE3_DIR/docker-config.json"
+```
+
+```bash
+export REGISTRY_USER
+```
+
+```bash
+export REGISTRY_PASSWORD_CANDIDATE
+```
+
+```bash
 printf 'Registry credential loaded for %s\n' "$REGISTRY_USER"
 ```
 
