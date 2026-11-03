@@ -73,7 +73,8 @@ List current INPUT rules:
 ```bash
 sudo iptables -L INPUT -n --line-numbers
 ```
-<img width="916" height="121" alt="WindowsTerminal_uz0E3LxtCF" src="https://github.com/user-attachments/assets/847b3bdd-b48b-4e58-bc1a-50077ac28a8b" />
+<img width="1329" height="112" alt="WindowsTerminal_URTRhoQ3wq" src="https://github.com/user-attachments/assets/b68069f0-76f0-4724-bb85-3293b44becc9" />
+
 
 Block the observed Kali source from Jenkins on port 8080:
 
