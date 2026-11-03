@@ -11,12 +11,14 @@ Run on the SonarQube host:
 ```bash
 grep --color=never 'SETTINGS_QUERY' /var/log/pul-sonar/sonar.log | grep -v '127.0.0.1'
 ```
+<img width="1329" height="218" alt="WindowsTerminal_pfuhRbXZ0V" src="https://github.com/user-attachments/assets/02ccc61b-6256-477c-a0de-47fff357f2ff" />
 
 To show the observed Kali client's queries only:
 
 ```bash
 grep --color=never 'SETTINGS_QUERY' /var/log/pul-sonar/sonar.log | grep '10.200.0.8'
 ```
+<img width="1267" height="217" alt="WindowsTerminal_LqaInlrQ3b" src="https://github.com/user-attachments/assets/ad915fa3-8faf-4c69-bf36-c70293758906" />
 
 Both searches were verified against this host and returned settings queries for `pul-firmware-ota` from `10.200.0.8`.
 
@@ -41,12 +43,14 @@ On the SonarQube host, block the observed source from port 9200. Replace the sou
 sudo iptables -I INPUT 1 -s 10.200.0.8 -p tcp -m tcp --dport 9200 -j DROP
 sudo iptables -C INPUT -s 10.200.0.8 -p tcp -m tcp --dport 9200 -j DROP
 ```
+<img width="1246" height="83" alt="WindowsTerminal_Br9FywGpwj" src="https://github.com/user-attachments/assets/0f620921-397d-4e34-8fef-45fffc439e45" />
 
 To remove that rule and restore access:
 
 ```bash
 sudo iptables -D INPUT -s 10.200.0.8 -p tcp -m tcp --dport 9200 -j DROP
 ```
+<img width="1322" height="44" alt="WindowsTerminal_sWAnu2tTJC" src="https://github.com/user-attachments/assets/4456bbf5-3828-479f-b8ec-64a4a41d6ea3" />
 
 Revoke the exposed SonarQube token and the Deploy Commander token through their configured administrative interfaces. Their secret values are intentionally redacted in this public writeup.
 
