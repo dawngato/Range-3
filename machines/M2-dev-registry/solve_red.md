@@ -29,7 +29,8 @@ Enumerate the PUL Container Registry v2 API, retrieve the firmware-builder image
 ```bash
 curl --max-time 8 -fsS -i http://203.0.3.36:5000/v2/ | sed -n '1,8p'
 ```
-<img width="937" height="284" alt="WindowsTerminal_4ocxETJPFa" src="https://github.com/user-attachments/assets/96ad1cfd-f0a9-49fe-84fc-5a805da3d16f" />
+<img width="1185" height="266" alt="WindowsTerminal_jbRXdcp4o7" src="https://github.com/user-attachments/assets/0b01302f-f165-456a-8e9c-003c40f8cfa1" />
+
 
 The response is HTTP 200 and includes the Docker Registry v2 header.
 
