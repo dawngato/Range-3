@@ -9,14 +9,14 @@
 Run on the SonarQube host:
 
 ```bash
-grep --color=never 'SETTINGS_QUERY' /var/log/pul-sonar/sonar.log | grep -v '127.0.0.1'
+grep --color=never 'SETTINGS_QUERY' /var/log/pul-sonar/sonar.log | grep -v '127.0.0.1' || printf 'No settings query events in this log.\n'
 ```
 <img width="1329" height="218" alt="WindowsTerminal_pfuhRbXZ0V" src="https://github.com/user-attachments/assets/02ccc61b-6256-477c-a0de-47fff357f2ff" />
 
 To show the observed Kali client's queries only:
 
 ```bash
-grep --color=never 'SETTINGS_QUERY' /var/log/pul-sonar/sonar.log | grep '10.200.0.8'
+grep --color=never 'SETTINGS_QUERY' /var/log/pul-sonar/sonar.log | grep '10.200.0.8' || printf 'No settings queries from 10.200.0.8.\n'
 ```
 <img width="1267" height="217" alt="WindowsTerminal_LqaInlrQ3b" src="https://github.com/user-attachments/assets/ad915fa3-8faf-4c69-bf36-c70293758906" />
 

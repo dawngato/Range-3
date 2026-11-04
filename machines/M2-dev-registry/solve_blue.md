@@ -9,14 +9,14 @@
 Run on the registry host:
 
 ```bash
-grep --color=never -E 'v2/_catalog|manifests|blobs' /var/log/pul-registry/registry.log | grep -v '127.0.0.1'
+grep --color=never -E 'v2/_catalog|manifests|blobs' /var/log/pul-registry/registry.log | grep -v '127.0.0.1' || printf 'No matching registry API requests in this log.\n'
 ```
 <img width="1461" height="620" alt="WindowsTerminal_32GBFVWdnR" src="https://github.com/user-attachments/assets/f1e35058-5e7f-41cf-9fc8-07433a59c3f6" />
 
 This host logs client IPs in the registry log. The observed Kali source was `10.200.0.8`; to show its requests only:
 
 ```bash
-grep --color=never -E 'v2/_catalog|manifests|blobs' /var/log/pul-registry/registry.log | grep '10.200.0.8'
+grep --color=never -E 'v2/_catalog|manifests|blobs' /var/log/pul-registry/registry.log | grep '10.200.0.8' || printf 'No matching registry requests from 10.200.0.8.\n'
 ```
 <img width="1460" height="617" alt="WindowsTerminal_y8sJbu9VUA" src="https://github.com/user-attachments/assets/d1c0e3bb-5743-4466-a3ae-e83096e0ebfb" />
 

