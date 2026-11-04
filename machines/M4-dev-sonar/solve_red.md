@@ -45,15 +45,10 @@ The response includes the `pul-firmware-ota` project.
 ### Step 3 — Retrieve the project settings
 
 ```bash
-umask 077
-curl --max-time 8 -fsS "http://203.0.3.36:9200/api/settings/values?component=pul-firmware-ota" \
-     -H "Authorization: Bearer $(sed -n 's/^SONAR_TOKEN=//p' "$RANGE3_DIR/sonarqube-access.env")" \
-     -o "$RANGE3_DIR/sonar-settings.json"
-printf 'Setting keys: %s\n' "$(jq -r '[(if type == "array" then .[] else (.settings // .values // [])[] end) | .key] | join(", ")' "$RANGE3_DIR/sonar-settings.json")"
-export DEPLOY_TOKEN="$(jq -r '(if type == "array" then .[] else (.settings // .values // [])[] end) | select(.key == "sonar.ci.deploy_token") | .value' "$RANGE3_DIR/sonar-settings.json")"
-printf 'Deploy Commander token loaded; value not printed.\n'
+curl -s "http://203.0.3.36:9200/api/settings/values?component=pul-firmware-ota" \
+     -H "Authorization: Bearer sqa_pul_admin_2024_gridfall" | python3 -m json.tool
 ```
-<img width="1450" height="259" alt="WindowsTerminal_U5sPbQXY7i" src="https://github.com/user-attachments/assets/8192070c-6ce7-44e1-90a2-70a92722a5ec" />
+<img width="1357" height="657" alt="WindowsTerminal_bU7sY2i0eA" src="https://github.com/user-attachments/assets/acab3e14-07bd-45a3-a469-8a83b4780c18" />
 
 The settings include `sonar.ci.deploy_token` and `sonar.ci.deploy_url`. The token is loaded into `DEPLOY_TOKEN`; its value is redacted here. The URL stored in the setting contains the placeholder `11.x.x.x`; the deployed M5 service is at `203.0.3.36:8888`.
 
