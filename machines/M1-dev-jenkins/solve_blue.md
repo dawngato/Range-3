@@ -41,14 +41,14 @@ curl --max-time 8 -sS -o /dev/null -w 'HTTP %{http_code}\n' http://203.0.3.36:80
 On the Jenkins host, find API enumeration and artifact downloads:
 
 ```bash
-grep --color=never -E 'GET /api/json|GET /job/.*/artifact' /var/log/jenkins/access_log
+grep --color=never -E 'GET /api/json|GET /job/.*/artifact' /var/log/jenkins/access_log || printf 'No matching Jenkins API or artifact requests in this log.\n'
 ```
 <img width="1436" height="479" alt="WindowsTerminal_dtnws1DZOA" src="https://github.com/user-attachments/assets/ab11e847-94de-41ef-87a5-add49b2d7875" />
 
 To show the observed Kali source specifically:
 
 ```bash
-grep --color=never -E 'GET /api/json|GET /job/.*/artifact' /var/log/jenkins/access_log | grep '10.200.0.8'
+grep --color=never -E 'GET /api/json|GET /job/.*/artifact' /var/log/jenkins/access_log | grep '10.200.0.8' || printf 'No matching requests from 10.200.0.8.\n'
 ```
 <img width="1415" height="442" alt="WindowsTerminal_b0FPGR7hCa" src="https://github.com/user-attachments/assets/92a99ad8-a99e-4103-a105-458f4bbb0f79" />
 

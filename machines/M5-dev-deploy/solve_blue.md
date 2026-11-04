@@ -9,16 +9,38 @@
 Run on the Deploy Commander host:
 
 ```bash
-grep --color=never 'DRYRUN_MANIFEST_RETURNED' /var/log/pul-deploy/deploy.log | grep -v '127.0.0.1'
+grep --color=never 'DRYRUN_MANIFEST_RETURNED' /var/log/pul-deploy/deploy.log | grep -v '127.0.0.1' || printf 'No dry-run manifest events in this log.\n'
 ```
 
 To show the observed Kali client's events only:
 
 ```bash
-grep --color=never 'DRYRUN_MANIFEST_RETURNED' /var/log/pul-deploy/deploy.log | grep '10.200.0.8'
+grep --color=never 'DRYRUN_MANIFEST_RETURNED' /var/log/pul-deploy/deploy.log | grep '10.200.0.8' || printf 'No dry-run manifest events from 10.200.0.8.\n'
 ```
 
 Both searches were verified against this host; the log records `pul-ota-firmware` dry-run responses containing a ServiceAccount token from `10.200.0.8`.
+
+### Kubernetes API availability
+
+Run these on the Kubernetes host (`203.0.2.188`) to confirm the API service and its source filter are active:
+
+```bash
+sudo systemctl is-active k3s k3s-api-source-filter.service
+```
+
+```bash
+sudo ss -lntp | grep ':6443' || printf 'Kubernetes API is not listening on port 6443.\n'
+```
+
+```bash
+sudo k3s kubectl get nodes -o wide
+```
+
+```bash
+sudo k3s kubectl get pods -n pul-production
+```
+
+The source filter allows the Kali client (`10.200.0.8`) and Deploy Commander (`203.0.3.36`) to reach port 6443. The service unit reapplies those rules after a reboot.
 
 ### Snort rule example
 
